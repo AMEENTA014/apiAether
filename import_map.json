@@ -1,0 +1,10 @@
+{
+    "imports": {
+      "drizzle-orm/pg-core": "https://deno.land/x/drizzle@latest/mod.ts",
+      "dotenv": "https://deno.land/x/dotenv@v3.0.0/mod.ts",
+      "oak": "https://deno.land/x/oak@v7.5.0/mod.ts",
+      "drizzle-kit": "https://deno.land/x/drizzle_kit@latest/mod.ts",
+      "oakCors": "https://deno.land/x/oak_cors@v1.2.2/mod.ts"
+    }
+  }
+  
