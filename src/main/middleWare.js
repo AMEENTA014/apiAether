@@ -1,4 +1,8 @@
-import { create } from 'djwt';
+import { create,verify }  from 'djwt';
+import * as bcrypt from 'bcrypt';
+import * as OTPAuth from 'otpauth';
+import { SMTPClient } from "denomailer";
+const env = Deno.env;
 // errorHandler.js
 export const errorHandler = async(context, next) => {
   try {
@@ -20,8 +24,12 @@ export const errorHandler = async(context, next) => {
       statusCode = 404;
       message = 'Not Found: The requested resource was not found.';
     } else {
-      statusCode = 500;
-      message = 'Internal Server Error';
+        if(!err.statusCode){
+        statusCode = err.statusCode;
+      }  else {
+        statusCode = 500;
+      }
+      message = err.message;
     }
 
     context.response.status = statusCode;
@@ -29,55 +37,109 @@ export const errorHandler = async(context, next) => {
   }
 };
 
-export async function generateOtp() {
-    // Implementation for OTP generation
-  }
-  
-  export async function generateUniqueId() {
-    // Implementation for unique ID generation
-  }
-  
-  export async function hashPass(password) {
-    // Implementation for password hashing
-  }
-  
-  export async function validatePassword(inputPassword, storedPassword) {
-    // Implementation for password validation
-  }
-  
-  export async function sendEMail(to, subject, message) {
-    // Implementation for sending email
-  }
-  
+//authenticate 
 
+export const authenticate = async (context, next) => {
+  const token = context.cookies.get('token');
+  if (!token) {
+    throw new Error('Unauthorized');
+  }
+  try {
+    const payload = await verify(token, env.PrivateOrSecretKey, 'HS256');
+    context.state.roleData = payload;
+    context.state.authenticated = true;
+    await next();
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      throw new Error('Session expired. Please log in again.');
+    }
+    throw new Error(`Unauthorized: ${err.message}`);
+  }
+};
 
-const secret = Deno.env.get('PrivateOrSecretKey');
+//generate otp 
+export const generateOtp = () => { 
+  const secret = new OTPAuth.Secret();
+   const totp = new OTPAuth.TOTP({ secret: secret, algorithm: "SHA1", digits: 6, period: 30, }); 
+   const token = totp.generate(); // Ensure to return the base32 encoded secret 
+return { otp: token, secret: secret.base32 };
+}
+export const verifyOtp = (data, otp) => {
+   const  totp = new OTPAuth.TOTP({ 
+    algorithm: "SHA1", 
+    digits: 6, 
+    period: 30,
+     secret: OTPAuth.Secret.fromBase32(data.secret) 
+    }); 
+    const  delta = totp.validate({ token: otp, window: 1 });
+  return delta !== null; 
+  }// returns true if the OTP is valid, false otherwise
 
+  //hash and validate pass 
+  export const hashPass = async (password) => {
+     try { 
+      return await bcrypt.hash(password, 10);
+     }
+   catch (err) {
+     throw new Error('Error while hashing password'+err);
+    }}
+  export const validatePassword = async (pass, dbPass) => {
+    try {
+      return await bcrypt.compare(pass, dbPass);
+    } catch (err) {
+      throw new Error(`passwordValidation Error ${err}`);
+    }
+  };
+  
+  //sendmail
+
+  export const sendEMail = async (email, subject, message) => {
+    const client = new SMTPClient({
+      connection: {
+        hostname: "smtp.gmail.com",
+        port: 465,
+        tls: true,
+        auth: {
+          username: env.get(MYMAIL),
+          password: env.get(MAILPASS),
+        },
+      },
+    });
+  
+    const mailOptions = {
+      from: env.get(MYMAIL),
+      to: email,
+      subject: subject,
+      content: message,
+      html: `<p>${message}</p>`, // pls change accordingly 
+    };
+  
+    try {
+      await client.send(mailOptions);
+      await client.close();
+      return { message: 'Email sent successfully' };
+    } catch (error) {
+      throw new Error("Error in mailSending: " + error.message);
+    }
+  };
+  
+  
+export const generateUniqueId =  () => {
+  return crypto.randomUUID().toString();
+};
 export const createToken = async (user) => {
-  const payload = { username: user.userName, userId: user.userId };
-  const token = await create({ alg: 'HS256', typ: 'JWT' }, payload, secret);
+  const payload = { username: user.userName, userId: user.userId, role: user.role };
+  const token = await create({ alg: 'HS256', typ: 'JWT' }, payload, env.get(PrivateOrSecretKey));
   return token;
 };
 
-  
-  export async function tOtpVerify(data, otp) {
-    // Implementation for TOTP verification
-  }
-  
-  // Redis functions
-  export async function setValue(client, key, value) {
-    // Implementation for setting a value in Redis
-  }
-  
-  export async function getValue(client, key) {
-    // Implementation for getting a value from Redis
-  }
-  
-  export async function setExpire(client, key, time) {
-    // Implementation for setting expiration in Redis
-  }
-  
-  export async function isExpired(client, key) {
-    // Implementation for checking expiration in Redis
-  }
-  
+export default { 
+  errorHandler,
+  generateOtp, 
+  generateUniqueId,
+  hashPass, 
+  validatePassword, 
+  sendEMail,
+  createToken, 
+  verifyOtp
+    };

@@ -1,24 +1,18 @@
-import { connect } from 'drizzle-orm';
-import { config } from 'dotenv';
-import { UserTable, FileTable, SymptomTable } from './schema.js';
+  import { drizzle } from "drizzle-orm/postgres-js"
+  import { UserTable, FileTable, SymptomTable } from './schema.js';
+  import {defineConfig } from "../../drizzle.config.ts"
+  import { Client } from "pg";
+  const client = new Client(defineConfig);
 
-// Load environment variables
-const env = config();
+  await client.connect();
 
-// Database connection configuration
-const connection = connect({
-  host: 'localhost',
-  port: 5432,
-  user: env.DB_USER,
-  password: env.DB_PASSWORD,
-  database: env.DB_NAME,
-});
+  export const connection = drizzle(client);
 
-// User Table CRUD Operations
+  // User Table CRUD Operations
 
-export async function createUser(userData) {
-  return await connection.insert(UserTable).values(userData).execute();
-}
+  export async function createUser(userData) {
+    return await connection.insert(UserTable).values(userData).execute();
+  }
 
 export async function getUsers() {
   return await connection.select().from(UserTable).execute();
@@ -43,7 +37,50 @@ export async function getUserByEmailModel(email) {
 
 // File Table CRUD Operations
 
-export async function createFile(fileData) { return await connection.insert(FileTable).values(fileData).execute(); } export async function getFiles() { return await connection.select().from(FileTable).execute(); } export async function getFileById(fileId) { return await connection.select().from(FileTable).where({ fileId }).execute(); } export async function updateFile(fileId, updateData) { return await connection.update(FileTable).set(updateData).where({ fileId }).execute(); } export async function deleteFile(fileId) { return await connection.delete().from(FileTable).where({ fileId }).execute(); }
+// Create a new file record
+export async function createFile(fileData) {
+  try {
+    return await connection.insert(FileTable).values(fileData).execute();
+  } catch (error) {
+    throw new Error('DatabaseConnectionError');
+  }
+}
+
+// Get all file records
+export async function getFiles() {
+  try {
+    return await connection.select().from(FileTable).execute();
+  } catch (error) {
+    throw new Error('DatabaseConnectionError');
+  }
+}
+
+// Get a file record by its ID
+export async function getFileById(fileId) {
+  try {
+    return await connection.select().from(FileTable).where({ fileId }).execute();
+  } catch (error) {
+    throw new Error('DatabaseConnectionError');
+  }
+}
+
+// Update a file record by its ID
+export async function updateFile(fileId, updateData) {
+  try {
+    return await connection.update(FileTable).set(updateData).where({ fileId }).execute();
+  } catch (error) {
+    throw new Error('DatabaseConnectionError');
+  }
+}
+
+// Delete a file record by its ID
+export async function deleteFile(fileId) {
+  try {
+    return await connection.delete().from(FileTable).where({ fileId }).execute();
+  } catch (error) {
+    throw new Error('DatabaseConnectionError');
+  }
+}
 
 // Symptom Table CRUD Operations
 
@@ -86,7 +123,3 @@ export async function deleteSymptom(symptomId) {
     throw new Error('DatabaseConnectionError');
   }
 }
-
-
-// Export the database connection
-export { connection };
