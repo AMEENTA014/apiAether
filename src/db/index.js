@@ -1,21 +1,16 @@
-  import { drizzle } from "drizzle-orm/postgres-js"
   import { UserTable, FileTable, SymptomTable } from './schema.js';
-  import {defineConfig } from "../../drizzle.config.ts"
-  import { Client } from "pg";
-  const client = new Client(defineConfig);
+  import { connection } from "./conn.js";
 
-  await client.connect();
-
-  export const connection = drizzle(client);
-
-  // User Table CRUD Operations
-
-  export async function createUser(userData) {
+export async function createUser(userData) {
     return await connection.insert(UserTable).values(userData).execute();
   }
 
 export async function getUsers() {
   return await connection.select().from(UserTable).execute();
+}
+
+export async function checkUserName(userName){
+return await connection.select().from(UserTable).where({userName}).execute();
 }
 
 export async function getUserById(userId) {

@@ -1,13 +1,13 @@
 import {Router} from "oak";
+import middleWares from "./middleWare.js";
+import controllers from "./controller.js";
 const userRouter = new Router();
 const fileRouter = new Router();
 const symptomRouter = new Router();
-const authRouter = new Router();
-import middleWares from "./middleWare.js";
-import controllers from "./controller.js";
-authRouter.use(middleWares.errorHandler);
-authRouter.post('forgotPass',controllers.forgotPasswordController);
-authRouter.post('signUp',controllers.signUpUserController);
+export const authRouter = new Router();
+
+authRouter.post('/forgotPass',middleWares.errorHandler,controllers.forgotPasswordController);
+authRouter.post('/signUp:',middleWares.errorHandler,controllers.signUpUserController);
 /*
 userRouter
   .get('/users', async (context) => {
@@ -93,5 +93,4 @@ symptomRouter
     context.response.body = { message: 'Symptom deleted successfully' };
   });
 */
-  export default authRouter;
   

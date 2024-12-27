@@ -2,15 +2,17 @@ import { create,verify }  from 'djwt';
 import * as bcrypt from 'bcrypt';
 import * as OTPAuth from 'otpauth';
 import { SMTPClient } from "denomailer";
-const env = Deno.env;
+import {load} from "dotenv";
+const env = await load({ export:true});
 // errorHandler.js
 export const errorHandler = async(context, next) => {
   try {
+    console.log('f');
     await next();
   } catch (err) {
     let statusCode;
     let message;
-
+console.log(err);
     if (err.message === 'DatabaseConnectionError') {
       statusCode = 500;
       message = 'Internal Server Error: Database connection failed.';
@@ -97,17 +99,17 @@ export const verifyOtp = (data, otp) => {
     const client = new SMTPClient({
       connection: {
         hostname: "smtp.gmail.com",
-        port: 465,
+        port: 587,
         tls: true,
         auth: {
-          username: env.get(MYMAIL),
-          password: env.get(MAILPASS),
+          username: env.MYMAIL,
+          password: env.MAILPASS,
         },
       },
     });
   
     const mailOptions = {
-      from: env.get(MYMAIL),
+      from: env.MYMAIL,
       to: email,
       subject: subject,
       content: message,
@@ -129,7 +131,7 @@ export const generateUniqueId =  () => {
 };
 export const createToken = async (user) => {
   const payload = { username: user.userName, userId: user.userId, role: user.role };
-  const token = await create({ alg: 'HS256', typ: 'JWT' }, payload, env.get(PrivateOrSecretKey));
+  const token = await create({ alg: 'HS256', typ: 'JWT' }, payload, env.PrivateOrSecretKey);
   return token;
 };
 

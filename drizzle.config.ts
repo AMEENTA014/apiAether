@@ -1,8 +1,10 @@
-const env = Deno.env;
-export const defineConfig = {
-  user: env.get('DB_USER'),
-  password: env.get('DB_PASSWORD'),
-  hostname: env.get('DB_HOST'),
-  port: env.get('DB_PORT'),
-  database: env.get('DB_NAME'),
-};
+/*import type { Config } from "drizzle-kit";
+import {load} from "dotenv";
+const env = load({ path: '../../.env'});
+const config: Config = { dialect: "postgresql",
+   schema: "./src/schema.js",
+    out: "./migrations", 
+  dbCredentials: { url: `postgres://${env.get('DB_USER')}:${env.get('DB_PASSWORD')}@${env.get('DB_HOST')}:${env.get('DB_PORT')}/${env.get('DB_NAME')}`, },
+ verbose: true, 
+ strict: true, }; 
+ export default config ;*/
