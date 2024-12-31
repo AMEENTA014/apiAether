@@ -1,7 +1,7 @@
-import {getUserByEmailModel,createUser,checkUserName} from  "../db/index.js";
+import {getUserByEmail,createUser,checkUserName} from  "../db/model.js";
 import middleWares from "./middleWare.js";
-import {load} from "dotenv";
-const env = await load({export:true});
+import {config} from "dotenv";
+ config({path:"../../.env"});
 const tempStore = new Map(); // In-memory store for temporary data
 
 export const signUpUserController = async (context) => {
@@ -11,27 +11,25 @@ export const signUpUserController = async (context) => {
   if (!email || !username || !password) {
     throw new Error('ValidationError');
   }
-  const existingUser = await getUserByEmailModel(email);
+  const existingUser = await getUserByEmail(email);
   if (existingUser) {
     const err = new Error('ValidationError'+"userAlreadyExists");
     err.status = 400 ;
     throw err ;
   }
- if(checkUserName(username)){
-  const err = new Error('ValidationError');
+ if(await checkUserName(username)){
+  const err = new Error('username already exists');
    err.status = 400 ;
    throw err ;
  }
   const { otp, secret } = middleWares.generateOtp();
   const id =  middleWares.generateUniqueId();
-
   tempStore.set(id, {
     otp, email, secret, pass: await middleWares.hashPass(password), username, action: 'signUp'
   });
 
   setTimeout(() => tempStore.delete(id), 600000); // Set expiration to 10 minutes
-
-  const message = `Your OTP is ${otp}. Click this link for signup verification: ${env.VERIFYLINK}?id=${id}`;
+  const message = `Your OTP is ${otp}. Click this link for signup verification: ${Deno.env.get('VERIFYLINK')}?id=${id}`;
   await middleWares.sendEMail(email, 'signupVerify', message);
   context.response.status = 200;
   context.response.body = { message: 'OTP sent to email' };
@@ -184,7 +182,7 @@ export const logoutUserController =  (context) => {
       const resetId = middleWares.generateUniqueId();
       tempStore.set(resetId, JSON.stringify({ email: email, userId: user.userId }));
       setTimeout(() => tempStore.delete(resetId), 600 * 1000);
-      const resetLink = `${env.RESETLINK}/${resetId}`;
+      const resetLink = `${Deno.env.get('RESETLINK')}/${resetId}`;
       await middleWares.sendEMail(email, 'resetPass', `Click this link to reset your password: ${resetLink}`);
       context.response.status = 200;
       context.response.body = { message: "ResetLinkSent" };
@@ -214,7 +212,7 @@ export const logoutUserController =  (context) => {
             tempStore.set(resetId, JSON.stringify({ userId }));
             setTimeout(() => tempStore.delete(resetId), 600000);
           
-            const resetLink = `${env.RESETLINK}/id=${resetId}`;
+            const resetLink = `${Deno.env.get(RESETLINK)}/id=${resetId}`;
             const message = `Click this link to reset your password: ${resetLink}`;
             await sendEmail(email, 'resetPass', message);
             context.response.status = 200;

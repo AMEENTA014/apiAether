@@ -1,24 +1,26 @@
-import { Client } from "pg";
-import { drizzle } from "drizzle-orm/postgres-js";
-import { defineConfig } from "./dbConfig.js";
-import { UserTable} from "./schema.js";
-console.log(defineConfig);
-console.log("hi");
-let connection;
-try {
-  const client = new Client(defineConfig);
-
-  await client.connect();
-  console.log('Database connected successfully');
-  await client.queryArray('SELECT NOW()'); console.log('Simple query executed successfully');
-  connection = drizzle(client);
-  console.log("Drizzle ORM initialized");
-  console.log(connection);
-  // Perform a test query to ensure the connection is working
-  const testResult = await connection.select().from(UserTable).execute();
-  console.log("Test query result:", testResult);
-} catch (error) {
-  console.error("Error connecting to the database:", error);
-  throw error;  // Optionally rethrow the error if you want to propagate it
+import { Client } from "dpg";
+import { config } from "dotenv";
+config({ path: "../../.env" });
+const defineConfig = {
+  user:Deno.env.get('DB_USER'),
+  password: Deno.env.get('DB_PASSWORD'),
+  hostname: Deno.env.get('DB_HOST'), 
+  port: Number(Deno.env.get('DB_PORT')),
+  database: Deno.env.get('DB_NAME'),
 }
-export { connection };
+ 
+
+const client = new Client(defineConfig);
+await client.connect();
+async function createUser(user) { 
+    const { email, userName, password } = user;
+     const query = ` INSERT INTO users (email, userName, password) VALUES ($1, $2, $3) RETURNING *; `; 
+     const values = [email, userName, password]; 
+     try {
+       const res = await client.queryObject(query, ...values);
+        return res.rows[0]; 
+      } catch (err) {
+         throw new Error(err); 
+        
+        } }      
+export default client;

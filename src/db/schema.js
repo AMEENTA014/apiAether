@@ -40,11 +40,11 @@ import { pgTable, serial, varchar, boolean, timestamp, integer, text } from "dri
 export const UserTable = pgTable('users', {
   userId: serial('userId').primaryKey(),
   email: varchar('email', { length: 255 }).notNull(),  // Ensuring email is unique
-  userName: varchar('userName', { length: 255 }).notNull(),
+  userName: varchar('userName', { length: 255 }).notNull(),//unique
   password: varchar('password', { length: 255 }).notNull(),
   googleId: varchar('googleId', { length: 255 }),
   userIdOnBlockchain: varchar('userIdOnBlockchain', { length: 255 }).notNull(),
-  files: varchar('files', { length: 255 }).notNull(),
+ // files: varchar('files', { length: 255 }).notNull(),
   referenceLocation: varchar('referenceLocation', { length: 255 }).notNull(),
   dataSharable: boolean('dataSharable').notNull(),
   createdAt: timestamp('createdAt').defaultNow().notNull(),
@@ -64,6 +64,7 @@ export const FileTable = pgTable('files', {
 
 // Symptom Table
 export const SymptomTable = pgTable('symptoms', {
+  //userid 
   symptomId: serial('symptomId').primaryKey(),
   description: text('description').notNull(),
   result: text('result').notNull(),

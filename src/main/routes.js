@@ -7,7 +7,7 @@ const symptomRouter = new Router();
 export const authRouter = new Router();
 
 authRouter.post('/forgotPass',middleWares.errorHandler,controllers.forgotPasswordController);
-authRouter.post('/signUp:',middleWares.errorHandler,controllers.signUpUserController);
+authRouter.post('/signUp',middleWares.errorHandler,controllers.signUpUserController);
 /*
 userRouter
   .get('/users', async (context) => {

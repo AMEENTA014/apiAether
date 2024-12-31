@@ -1,13 +1,13 @@
 import { create,verify }  from 'djwt';
-import * as bcrypt from 'bcrypt';
+import {hash,compare,genSalt} from 'bcrypt';
 import * as OTPAuth from 'otpauth';
-import { SMTPClient } from "denomailer";
-import {load} from "dotenv";
-const env = await load({ export:true});
+import { SMTPClient } from 'denomailer';
+import {config} from "dotenv";
+config({path:"../..//.env"});
 // errorHandler.js
 export const errorHandler = async(context, next) => {
   try {
-    console.log('f');
+    console.log('inerrorhandler middleware');
     await next();
   } catch (err) {
     let statusCode;
@@ -58,7 +58,6 @@ export const authenticate = async (context, next) => {
     throw new Error(`Unauthorized: ${err.message}`);
   }
 };
-
 //generate otp 
 export const generateOtp = () => { 
   const secret = new OTPAuth.Secret();
@@ -78,16 +77,19 @@ export const verifyOtp = (data, otp) => {
   }// returns true if the OTP is valid, false otherwise
 
   //hash and validate pass 
-  export const hashPass = async (password) => {
+export const hashPass = async (password) => {
      try { 
-      return await bcrypt.hash(password, 10);
+    const salt = await genSalt(10);
+      
+      return await hash(password, salt);
+   
      }
    catch (err) {
      throw new Error('Error while hashing password'+err);
     }}
   export const validatePassword = async (pass, dbPass) => {
     try {
-      return await bcrypt.compare(pass, dbPass);
+      return await compare(pass, dbPass);
     } catch (err) {
       throw new Error(`passwordValidation Error ${err}`);
     }
@@ -95,36 +97,31 @@ export const verifyOtp = (data, otp) => {
   
   //sendmail
 
-  export const sendEMail = async (email, subject, message) => {
-    const client = new SMTPClient({
-      connection: {
-        hostname: "smtp.gmail.com",
-        port: 587,
+export const sendEMail = async (email, subject, message) => {
+  try {
+    const client = new SMTPClient({ connection: { 
+      hostname: "smtp.gmail.com",
+       port: 465,
         tls: true,
-        auth: {
-          username: env.MYMAIL,
-          password: env.MAILPASS,
-        },
-      },
-    });
-  
-    const mailOptions = {
-      from: env.MYMAIL,
-      to: email,
-      subject: subject,
-      content: message,
-      html: `<p>${message}</p>`, // pls change accordingly 
-    };
-  
-    try {
-      await client.send(mailOptions);
-      await client.close();
-      return { message: 'Email sent successfully' };
-    } catch (error) {
-      throw new Error("Error in mailSending: " + error.message);
-    }
-  };
-  
+         auth: {
+           username: Deno.env.get("MYMAIL"),
+            password: Deno.env.get("MAILPASS"),
+           },
+           },});
+  await client.send({ from: Deno.env.get('MYMAIL'),
+     to: email, 
+     subject: subject, 
+     content: message});
+
+
+    await client.close();
+    return { message: 'Email sent successfully' };
+  } catch (error) {
+    console.error("Error in mailSending:", error);
+    throw new Error("Error in mailSending: " + error.message);
+  }
+};
+
   
 export const generateUniqueId =  () => {
   return crypto.randomUUID().toString();
