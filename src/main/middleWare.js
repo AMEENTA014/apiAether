@@ -1,4 +1,4 @@
-import { create,verify }  from 'djwt';
+import { create,verify,getNumericDate }  from 'djwt';
 import {hash,compare,genSalt} from 'bcrypt';
 import * as OTPAuth from 'otpauth';
 import { SMTPClient } from 'denomailer';
@@ -42,17 +42,28 @@ console.log(err);
 //authenticate 
 
 export const authenticate = async (context, next) => {
-  const token = context.cookies.get('token');
+  const token = await context.cookies.get('token');
   if (!token) {
     throw new Error('Unauthorized');
   }
   try {
-    const payload = await verify(token, env.PrivateOrSecretKey, 'HS256');
+    // Convert string key to CryptoKey object
+    const encoder = new TextEncoder();
+    const keyBuf = encoder.encode(Deno.env.get('PrivateOrSecretKey'));
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      keyBuf,
+      { name: "HMAC", hash: "SHA-256" },
+      true,
+      ["sign", "verify"]
+    );
+    const payload = await verify(token, cryptoKey);
+    context.state = context.state || {};
     context.state.roleData = payload;
     context.state.authenticated = true;
     await next();
   } catch (err) {
-    if (err.name === 'TokenExpiredError') {
+    if (err instanceof Error && err.message.includes('exp')) {
       throw new Error('Session expired. Please log in again.');
     }
     throw new Error(`Unauthorized: ${err.message}`);
@@ -61,18 +72,18 @@ export const authenticate = async (context, next) => {
 //generate otp 
 export const generateOtp = () => { 
   const secret = new OTPAuth.Secret();
-   const totp = new OTPAuth.TOTP({ secret: secret, algorithm: "SHA1", digits: 6, period: 30, }); 
+   const totp = new OTPAuth.TOTP({ secret: secret, algorithm: "SHA1", digits: 6, period: 600, }); 
    const token = totp.generate(); // Ensure to return the base32 encoded secret 
 return { otp: token, secret: secret.base32 };
 }
-export const verifyOtp = (data, otp) => {
+export const verifyOtp = (secret, otp) => {
    const  totp = new OTPAuth.TOTP({ 
     algorithm: "SHA1", 
     digits: 6, 
-    period: 30,
-     secret: OTPAuth.Secret.fromBase32(data.secret) 
+    period: 600,
+     secret: OTPAuth.Secret.fromBase32(secret) 
     }); 
-    const  delta = totp.validate({ token: otp, window: 1 });
+    const  delta = totp.validate({ token: otp.toString(), window: 1});
   return delta !== null; 
   }// returns true if the OTP is valid, false otherwise
 
@@ -126,12 +137,37 @@ export const sendEMail = async (email, subject, message) => {
 export const generateUniqueId =  () => {
   return crypto.randomUUID().toString();
 };
-export const createToken = async (user) => {
-  const payload = { username: user.userName, userId: user.userId, role: user.role };
-  const token = await create({ alg: 'HS256', typ: 'JWT' }, payload, env.PrivateOrSecretKey);
-  return token;
-};
-
+export const createToken = async (user) => {  
+  const payload = {
+   username: user.userName,
+    email: user.email,
+    userId:user.userId,
+     password: user.password,
+      exp: getNumericDate(60 * 60) 
+    }
+        const encoder = new TextEncoder();
+      const keyBuf = encoder.encode(Deno.env.get('PrivateOrSecretKey'));
+      const cryptoKey = await crypto.subtle.importKey(
+        "raw",
+        keyBuf,
+        { name: "HMAC", hash: "SHA-256" },
+        true,
+        ["sign", "verify"]
+      );
+      try {
+        const token = await create(
+          { alg: "HS256", typ: "JWT" },
+          payload,
+          cryptoKey
+        );
+        return token;
+      } catch(err) {
+        console.error('Error creating token:', err);
+        throw err;
+      }
+    }
+    
+    
 export default { 
   errorHandler,
   generateOtp, 
@@ -140,5 +176,6 @@ export default {
   validatePassword, 
   sendEMail,
   createToken, 
-  verifyOtp
+  verifyOtp,
+  authenticate
     };

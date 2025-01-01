@@ -1,12 +1,14 @@
-import {getUserByEmail,createUser,checkUserName} from  "../db/model.js";
-import middleWares from "./middleWare.js";
+import {getUserByEmail,createUser,checkUserName,getUserById,updateUser,deleteUser,getAllUsers} from  "../db/model.js";
+import * as middleWares from "./middleWare.js";
 import {config} from "dotenv";
  config({path:"../../.env"});
 const tempStore = new Map(); // In-memory store for temporary data
 
 export const signUpUserController = async (context) => {
-  const fetchRequest = context.request.source; // Log the request to verify 
-  const requestBody = await fetchRequest.json();
+  const fetchRequest = context.request.source;
+  const rawBody = await fetchRequest.text();
+  if (!rawBody) { throw new Error('Empty request body'); }
+  const requestBody = JSON.parse(rawBody);
   const { email, username, password } = requestBody;
   if (!email || !username || !password) {
     throw new Error('ValidationError');
@@ -40,24 +42,22 @@ export const signUpUserController = async (context) => {
 
 export const verifyController = async (context) => {
   const fetchRequest = context.request.source;
-  const requestBody = await fetchRequest.json();
+  const rawBody = await fetchRequest.text();
+  if (!rawBody) { throw new Error('Empty request body'); }
+  const requestBody = JSON.parse(rawBody);;
   const { otp, id } = requestBody;
-
   if (!id || !otp) {
     const err = new Error('ValidationError: Id or OTP not provided');
     err.status = 400;
     throw err;
   }
-
   if (!tempStore.has(id)) {
     const err = new Error('ValidationError: OTP expired or invalid');
     err.status = 400;
     throw err;
   }
-
   const data = tempStore.get(id);
-
-  if (!middleWares.verifyOtp(data, otp)) {
+  if (!middleWares.verifyOtp(data.secret, otp)) {
     const err = new Error('ValidationError: Invalid OTP');
     err.status = 400;
     throw err;
@@ -68,14 +68,12 @@ export const verifyController = async (context) => {
       email: data.email,
       userName: data.username,
       password: data.pass,
-      userIdOnBlockchain: 'generated-blockchain-id',
-      files: [],
-      referenceLocation: 'default-location',
-      dataSharable: true
     };
-    await createUser(userData);
+    const createdData = await createUser(userData);
+    userData.userId = createdData.userid;
+    tempStore.delete(id);
     context.response.status = 200;
-    context.response.cookies.set('token', await middleWares.createToken(userData), { httpOnly: true });
+    context.cookies.set('token', await middleWares.createToken(userData), { httpOnly: true });
     context.response.body = 'SignUpSuccessLoginned';
   }
 };
@@ -123,7 +121,9 @@ export const googleSignInController = async (context) => {
 
 export const loginUserController = async (context) => {
   const fetchRequest = context.request.source;
-  const requestBody = await fetchRequest.json();
+  const rawBody = await fetchRequest.text();
+  if (!rawBody) { throw new Error('Empty request body'); }
+  const requestBody = JSON.parse(rawBody);
   const { email, password } = requestBody;
 
   if (!email || !password) {
@@ -132,7 +132,7 @@ export const loginUserController = async (context) => {
     throw err;
   }
 
-  const user = await userModels.getUserByEmailModel(email);
+  const user = await getUserByEmail(email);
 
   if (!user) {
     const err = new Error('ValidationError: User does not exist');
@@ -149,20 +149,22 @@ export const loginUserController = async (context) => {
   }
 
   context.response.status = 200;
-  context.response.cookies.set('token', await middleWares.createToken(user), { httpOnly: true });
+  context.cookies.set('token', await middleWares.createToken({email:user.email,userName:user.username,password:user.password,userId:user.userid}), { httpOnly: true });
   context.response.body = 'LoginSuccess';
 };
 
 //logout 
 export const logoutUserController =  (context) => {
-    context.response.cookies.delete('token');
+    context.cookies.delete('token');
     context.response.status = 200;
     context.response.body = 'LogoutSuccess';
   };
   // forgot password 
   export const forgotPasswordController = async (context) => {
     const fetchRequest = context.request.source;
-    const requestBody = await fetchRequest.json();
+    const rawBody = await fetchRequest.text();
+  if (!rawBody) { throw new Error('Empty request body'); }
+  const requestBody = JSON.parse(rawBody);
     const { email } = requestBody;
   
     if (!email) {
@@ -172,7 +174,7 @@ export const logoutUserController =  (context) => {
     }
   
     try {
-      const user = await userModels.getUserByEmailModel(email);
+      const user = await getUserByEmail(email);
       if (!user) {
         const err = new Error("User doesn't exist");
         err.status = 400;
@@ -180,7 +182,7 @@ export const logoutUserController =  (context) => {
       }
   
       const resetId = middleWares.generateUniqueId();
-      tempStore.set(resetId, JSON.stringify({ email: email, userId: user.userId }));
+      tempStore.set(resetId, JSON.stringify({ email: email, userId: user.userid }));
       setTimeout(() => tempStore.delete(resetId), 600 * 1000);
       const resetLink = `${Deno.env.get('RESETLINK')}/${resetId}`;
       await middleWares.sendEMail(email, 'resetPass', `Click this link to reset your password: ${resetLink}`);
@@ -194,27 +196,29 @@ export const logoutUserController =  (context) => {
           //reset password 
           export const resetPasswordController = async (context) => {
             const fetchRequest = context.request.source;
-            const requestBody = await fetchRequest.json();
+            const rawBody = await fetchRequest.text();
+            if (!rawBody) { throw new Error('Empty request body'); }
+            const requestBody = JSON.parse(rawBody);
             const { email } = requestBody;
           
             if (!email) {
               throw new Error("Email required");
             }
             
-            const userId = context.state.roleData.userId;
-            const user = await userModels.getUserModel(userId);
-            
+            const {userId} = context.state.roleData;
+            const user = await getUserById(userId);
             if (user.email !== email) {
-              throw new Error("forbidden");
+              const err = new Error("forbidden");
+              err.status = 403
+              throw err;
             }
-          
             const resetId = middleWares.generateUniqueId();
-            tempStore.set(resetId, JSON.stringify({ userId }));
+            tempStore.set(resetId, JSON.stringify({ userId:userId }));
             setTimeout(() => tempStore.delete(resetId), 600000);
           
-            const resetLink = `${Deno.env.get(RESETLINK)}/id=${resetId}`;
+            const resetLink = `${Deno.env.get('RESETLINK')}/id=${resetId}`;
             const message = `Click this link to reset your password: ${resetLink}`;
-            await sendEmail(email, 'resetPass', message);
+            await middleWares.sendEMail(email, 'resetPass', message);
             context.response.status = 200;
             context.response.body = { success: true };
           };
@@ -222,19 +226,20 @@ export const logoutUserController =  (context) => {
 //reset pass verify 
 export const verifyResetPasswordController = async (context) => {
   const fetchRequest = context.request.source;
-  const requestBody = await fetchRequest.json();
+  const rawBody = await fetchRequest.text();
+  if (!rawBody) { throw new Error('Empty request body'); }
+  const requestBody = JSON.parse(rawBody);
   const { resetId, newPassword } = requestBody;
 
   if (!resetId || !newPassword) {
     throw new Error("Reset ID and new password are required");
   }
-
   const data = JSON.parse(tempStore.get(resetId) || "{}");
   if (!data.userId) {
     throw new Error("Reset link expired");
   }
 
-  const updatedUser = await userModels.updateUserModel(data.userId, {
+  const updatedUser = await updateUser(data.userId, {
     password: await middleWares.hashPass(newPassword)
   });
 
@@ -242,10 +247,139 @@ export const verifyResetPasswordController = async (context) => {
   context.response.body = updatedUser;
 };
 
+
+export const updateUserController = async (context) => {
+  const fetchRequest = context.request.source;
+  const rawBody = await fetchRequest.text();
+  if (!rawBody) { throw new Error('Empty request body'); }
+  const requestBody = JSON.parse(rawBody);
+  const { userId, newUserData } = requestBody;
+
+  if (!userId || !newUserData) {
+    const err = new Error('ValidationError: No UserId or New Data Provided');
+    err.status = 400;
+    throw err;
+  }
+
+  try {
+    // Check if user exists
+    const userExists = await getUserById(userId);
+    if (!userExists) {
+      const err = new Error('UserNotFound');
+      err.status = 404;
+      throw err;
+    }
+    if (newUserData.email) { 
+      const existingUserByEmail = await getUserByEmail(newUserData.email); 
+      if (existingUserByEmail && existingUserByEmail.userId !== userId) {
+         const err = new Error('ValidationError: Email already in use'); 
+         err.status = 400; throw err;
+         } 
+        } // Check if username is unique 
+    if (newUserData.userName) { 
+      const existingUserByUsername = await checkUserName(newUserData.userName);
+       if (existingUserByUsername ) {
+         const err = new Error('ValidationError: Username already in use'); 
+         err.status = 400; throw err; 
+        }
+      }
+    // Remove password if present in newUserData
+    if (newUserData.password) {
+      delete newUserData.password;
+    }
+
+    // Update user data
+    const updated = await updateUser(userId, newUserData);
+    context.response.status = 200;
+    context.response.body = updated;
+  } catch (err) {
+    console.error('Error in updateUserController:', err);
+    err.status = err.status || 500;
+    throw err;
+  }
+};
+
+export const deleteUserController = async (context) => {
+  const fetchRequest = context.request.source;
+  const rawBody = await fetchRequest.text();
+  if (!rawBody) { throw new Error('Empty request body'); }
+  const requestBody = JSON.parse(rawBody);
+    const { userId } = requestBody;
+  try {
+    if (!userId) {
+      const err = new Error('ValidationError: UserId Required');
+      err.status = 400;
+      throw err;
+    }
+    // Check if user exists
+    const user = await getUserById(userId);
+    console.log(user);
+    if (!user) {
+      const err = new Error('UserNotFound');
+      err.status = 404;
+      throw err;
+    }
+
+    // Delete user
+    await deleteUser(userId);
+    context.response.status = 200;
+    context.response.body = { message: 'UserDeleted' };
+  } catch (err) {
+    console.error('Error in deleteUserController:', err);
+    err.status = err.status || 500;
+    throw err;
+  }
+};
+
+
+
+export const getUserData = async (context) => {
+  try{
+  const userId = context.params.userId;
+  if (!userId) {
+    const err = new Error('ValidationError: UserId Required');
+    err.status = 400;
+    throw err;
+  }
+
+
+    const user = await getUserById(userId);
+    if (!user) {
+      const err = new Error('UserNotFound');
+      err.status = 404;
+      throw err;
+    }
+
+    context.response.status = 200;
+    context.response.body = user;
+  } catch (err) {
+    console.error('Error in getUserData:', err);
+    err.status = err.status || 500;
+    throw err;
+  }
+}
+export const getAllUserController = async (context) => {
+  try {
+    const users = await getAllUsers();
+    context.response.status = 200;
+    context.response.body = users;
+  } catch (err) {
+    console.error('Error in getAllUserController:', err);
+    err.status = err.status || 500;
+    throw err;
+  }
+};
+
           export default{
             forgotPasswordController,
             loginUserController,
             logoutUserController,
             signUpUserController,
-            verifyController
+            verifyController,
+            verifyResetPasswordController,
+            resetPasswordController,
+            updateUserController,
+            deleteUserController,
+            getAllUserController,
+            getUserData
           }

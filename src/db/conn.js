@@ -11,16 +11,5 @@ const defineConfig = {
  
 
 const client = new Client(defineConfig);
-await client.connect();
-async function createUser(user) { 
-    const { email, userName, password } = user;
-     const query = ` INSERT INTO users (email, userName, password) VALUES ($1, $2, $3) RETURNING *; `; 
-     const values = [email, userName, password]; 
-     try {
-       const res = await client.queryObject(query, ...values);
-        return res.rows[0]; 
-      } catch (err) {
-         throw new Error(err); 
-        
-        } }      
+await client.connect();     
 export default client;

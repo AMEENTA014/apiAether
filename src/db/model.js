@@ -2,15 +2,13 @@
   import client from "./conn.js";
 //create user 
 export async function createUser(user) { 
-  const { email, userName, password } = user;
    const query = ` INSERT INTO users (email, userName, password) VALUES ($1, $2, $3) RETURNING *; `; 
-   const values = [email, userName, password]; 
+   const values = [user.email, user.userName, user.password]; 
    try {
-     const res = await client.queryObject(query, ...values);
+     const res = await client.queryObject({text:query,args:values});
       return res.rows[0]; 
     } catch (error) {
-       throw new Error("DatabaseConnectionError"); 
-      
+       throw new Error(error); 
       } }
 
 //get all users 
@@ -20,7 +18,7 @@ export async function getAllUsers() {
   `;
 
   try {
-    const res = await client.queryObject(query);
+    const res = await client.queryObject({text:query});
     return res.rows;
   } catch (error) {
     throw new Error("DatabaseConnectionError");
@@ -29,23 +27,27 @@ export async function getAllUsers() {
 
 //check username exists 
 export async function checkUserName( userName ) {
-  const query = `
-    SELECT 1 FROM users
-    WHERE userName = $1;
-  `;
+  try{
+  if (!userName || userName.length <= 1) {
+     throw new Error("ValidationError: userName must be more than one character");
+  }
+  const query = ` SELECT 1 FROM users WHERE userName = $1;`;
   const values = [userName];
-  try {
-    const res = await client.queryObject(query, ...values);
+  console.log(values);
+  
+    const res = await client.queryObject({text:query,args:values});
     const rowCount = res.rows.length;
     return rowCount > 0;
   } catch (error) {
-    throw new Error("DatabaseConnectionError");
+    const err =  new Error("DatabaseConnectionError"+error);
+    err.status = 500;
+    throw err;
   }
 }
 
 
 //get user by user id 
-export async function getUserById({ userId }) {
+export async function getUserById(userId ) {
   const query = `
     SELECT * FROM users
     WHERE userId = $1;
@@ -53,35 +55,83 @@ export async function getUserById({ userId }) {
   const values = [userId];
 
   try {
-    const res = await client.queryObject(query, ...values);
+    const res = await client.queryObject({text:query,args:values});
     return res.rows[0];
   } catch (error) {
     throw new Error("DatabaseConnectionError");
   }
 }
 
-//update user 
-export async function updateUser(user) {
-  const { userId, email, userName, password, googleId, userIdOnBlockchain, referenceLocation, dataSharable } = user;
-  const query = `
-    UPDATE users
-    SET email = $1, userName = $2, password = $3, googleId = $4, userIdOnBlockchain = $5, referenceLocation = $6, dataSharable = $7, updatedAt = CURRENT_TIMESTAMP
-    WHERE userId = $8
-    RETURNING *;
-  `;
-  const values = [email, userName, password, googleId, userIdOnBlockchain, referenceLocation, dataSharable, userId];
-
+export async function updateUser(userId, updates) {
   try {
-    const res = await client.queryObject(query, ...values);
+  if (!userId) {
+    throw new Error("InvalidUserId");
+  }
+
+  // Get current user data first
+  const getCurrentUser = `SELECT * FROM users WHERE userId = $1;`;
+  const value = [userId];
+  //update user 
+ 
+    const currentUser = await client.queryObject({
+      text: getCurrentUser,
+      args: value
+    });
+
+    if (!currentUser.rows[0]) {
+      throw new Error("UserNotFound");
+    }
+    // Merge current data with updates
+    const current = currentUser.rows[0];
+    const updatedData = {
+      email: updates.email ?? current.email,
+      userName: updates.userName ?? current.username,
+      password: updates.password ?? current.password,
+      googleId: updates.googleId ?? current.googleId,
+      userIdOnBlockchain: updates.userIdOnBlockchain ?? current.userIdOnBlockchain,
+      referenceLocation: updates.referenceLocation ?? current.referenceLocation,
+      dataSharable: updates.dataSharable ?? current.dataSharable
+    };
+    const query = `
+      UPDATE users
+      SET email = $1, 
+          userName = $2, 
+          password = $3, 
+          googleId = $4, 
+          userIdOnBlockchain = $5, 
+          referenceLocation = $6, 
+          dataSharable = $7,
+          updatedAt = CURRENT_TIMESTAMP
+      WHERE userId = $8
+      RETURNING *;
+    `;
+
+    const values = [
+      updatedData.email,
+      updatedData.userName,
+      updatedData.password,
+      updatedData.googleId,
+      updatedData.userIdOnBlockchain,
+      updatedData.referenceLocation,
+      updatedData.dataSharable,
+      userId
+    ];
+
+    const res = await client.queryObject({
+      text: query,
+      args: values
+    });
+    
     return res.rows[0];
-  } catch (error) {
-    throw new Error("DatabaseConnectionError");
+  }catch (error) {
+    console.error('Database error:', error);
+    throw new Error(error.message || "DatabaseConnectionError");
   }
 }
 
 
 //delete user 
-export async function deleteUser({ userId }) {
+export async function deleteUser( userId ) {
   const query = `
     DELETE FROM users
     WHERE userId = $1
@@ -90,7 +140,7 @@ export async function deleteUser({ userId }) {
   const values = [userId];
 
   try {
-    const res = await client.queryObject(query, ...values);
+    const res = await client.queryObject({text:query,args:values});
     return res.rows[0];
   } catch (error) {
     throw new Error("DatabaseConnectionError");
@@ -106,7 +156,7 @@ export async function getUserByEmail( email ) {
   const values = [email];
 
   try {
-    const res = await client.queryObject(query, ...values);
+    const res = await client.queryObject({text:query,args:values});
     return res.rows[0];
   } catch (error) {
     throw new Error("DatabaseConnectionError");

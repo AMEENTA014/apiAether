@@ -5,9 +5,19 @@ const userRouter = new Router();
 const fileRouter = new Router();
 const symptomRouter = new Router();
 export const authRouter = new Router();
-
+authRouter.post('/logout',middleWares.authenticate,controllers.logoutUserController)
 authRouter.post('/forgotPass',middleWares.errorHandler,controllers.forgotPasswordController);
 authRouter.post('/signUp',middleWares.errorHandler,controllers.signUpUserController);
+authRouter.post('/verify',middleWares.errorHandler,controllers.verifyController);
+authRouter.post('/login', middleWares.errorHandler,controllers.loginUserController);
+authRouter.post('/resetPassword',middleWares.errorHandler, middleWares.authenticate, controllers.resetPasswordController);
+authRouter.post('/resetPassVerify', middleWares.errorHandler,controllers.verifyResetPasswordController);
+authRouter.put('/update', middleWares.errorHandler,middleWares.authenticate, controllers.updateUserController);
+authRouter.delete('/delete',middleWares.errorHandler,middleWares.authenticate,controllers.deleteUserController);
+authRouter.get('/getAllUsers',middleWares.errorHandler,middleWares.authenticate,controllers.getAllUserController);
+authRouter.get('/getUser/:userId',middleWares.errorHandler,middleWares.authenticate,controllers.getUserData);
+//authRouter.post('/gSignIn',userController.googleSignInController);
+
 /*
 userRouter
   .get('/users', async (context) => {
