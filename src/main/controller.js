@@ -1,5 +1,8 @@
-import {getUserByEmail,createUser,checkUserName,getUserById,updateUser,deleteUser,getAllUsers} from  "../db/model.js";
+import {getUserByEmail,createUser,checkUserName,getUserById,updateUser,deleteUser,getAllUsers,createFile,deleteFile,updateFile,getFileById,getFileByUuid,getFilesByUserId,createSymptom,deleteSymptom,updateSymptom,getSymptomById,getSymptomsByUserId,getAllFiles,getAllSymptoms} from  "../db/model.js";
 import * as middleWares from "./middleWare.js";
+/*
+import { OTPAuth } from "https://deno.land/x/otpauth/mod.ts";
+import { OAuth2Client } from "https://deno.land/x/oauth2_client/mod.ts";*/
 import {config} from "dotenv";
  config({path:"../../.env"});
 const tempStore = new Map(); // In-memory store for temporary data
@@ -29,7 +32,6 @@ export const signUpUserController = async (context) => {
   tempStore.set(id, {
     otp, email, secret, pass: await middleWares.hashPass(password), username, action: 'signUp'
   });
-
   setTimeout(() => tempStore.delete(id), 600000); // Set expiration to 10 minutes
   const message = `Your OTP is ${otp}. Click this link for signup verification: ${Deno.env.get('VERIFYLINK')}?id=${id}`;
   await middleWares.sendEMail(email, 'signupVerify', message);
@@ -74,46 +76,140 @@ export const verifyController = async (context) => {
     tempStore.delete(id);
     context.response.status = 200;
     context.cookies.set('token', await middleWares.createToken(userData), { httpOnly: true });
-    context.response.body = 'SignUpSuccessLoginned';
+    context.response.body = {
+      message: 'LoginSuccess',
+      userId: createdData.userid
+    };
   }
 };
 
 
 //signin 
-/*
-const client = new OAuth2Client(Deno.env.get('GOOGLE_CLIENT_ID'));
+/*const oAuth2Client = new OAuth2Client({
+  clientId: Deno.env.get('GOOGLE_CLIENT_ID'),
+  clientSecret: Deno.env.get('GOOGLE_CLIENT_SECRET'),
+  redirectUri: Deno.env.get('GOOGLE_REDIRECT_URI'),
+});
 
 export const googleSignInController = async (context) => {
-  const { idToken } = await context.request.body().value;
+  try {
+    const fetchRequest = context.request.source;
+    const rawBody = await fetchRequest.text();
+    
+    if (!rawBody) {
+      throw new Error('Empty request body');
+    }
+    
+    const requestBody = JSON.parse(rawBody);
+    const { idToken } = requestBody;
 
-  if (!idToken) {
-    throw new Error('ValidationError: ID token is required');
-  }
+    if (!idToken) {
+      const err = new Error('ValidationError: ID token is required');
+      err.status = 400;
+      throw err;
+    }
 
-  const ticket = await client.verifyIdToken({
-    idToken,
-    audience: env.get('GOOGLE_CLIENT_ID'),
-  });
+    // Verify the ID token
+    let ticket;
+    try {
+      ticket = await oAuth2Client.verifyIdToken({
+        idToken,
+        audience: Deno.env.get('GOOGLE_CLIENT_ID'),
+      });
+    } catch (error) {
+      const err = new Error('Invalid ID token');
+      err.status = 401;
+      throw err;
+    }
 
-  const { email, name: username, sub: googleId } = ticket.getPayload();
+    const payload = ticket.getPayload();
+    const { email, name, sub: googleId } = payload;
 
-  let user = await userModels.getUserByEmailModel(email);
+    if (!email || !name || !googleId) {
+      const err = new Error('Invalid Google account information');
+      err.status = 400;
+      throw err;
+    }
 
-  if (!user) {
-    user = await userModels.createUser({
-      email,
-      userName: username,
-      googleId,
-      userIdOnBlockchain: 'generated-blockchain-id', // Placeholder
-      files: [],
-      referenceLocation: 'default-location',
-      dataSharable: true
+    // Check if user exists
+    let user = await getUserByEmail(email);
+
+    if (!user) {
+      // Generate unique username from Google name
+      const baseUsername = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      let username = baseUsername;
+      let counter = 1;
+      
+      while (await checkUserName(username)) {
+        username = `${baseUsername}${counter}`;
+        counter++;
+      }
+
+      // Create new user with Google ID and a random password
+      user = await createUser({
+        email,
+        userName: username,
+        googleId
+      });
+
+      // Send welcome email with password reset instructions
+      const resetLink = `${Deno.env.get('RESETLINK')}?email=${encodeURIComponent(email)}`;
+      await middleWares.sendEMail(
+        email,
+        'Welcome to Platform - Set Your Password',
+        `Welcome to our platform! Your account has been created using Google Sign-In. 
+        For added security, please set your password by clicking this link: ${resetLink}`
+      );
+    } else {
+      // For existing users, verify Google ID
+      if (user.googleId && user.googleId !== googleId) {
+        const err = new Error('Account exists with different credentials');
+        err.status = 409;
+        throw err;
+      }
+
+      // If user exists but doesn't have googleId, update it
+      if (!user.googleId) {
+        user = await updateUser(user.userId, {
+          googleId: googleId
+        });
+      }
+    }
+
+    // Create authentication token
+    const token = await middleWares.createToken(user);
+
+    // Set response
+    context.response.status = 200;
+    context.response.cookies.set('token', token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      maxAge: 60 * 60 // 1 hour, matching your JWT expiration
+    });
+
+    context.response.body = {
+      status: 'success',
+      message: user.isNewUser ? 'Account created successfully' : 'Login successful',
+      userId: user.userId,
+      email: user.email,
+      username: user.userName
+    };
+
+  } catch (error) {
+    const status = error.status || 500;
+    context.response.status = status;
+    context.response.body = {
+      status: 'error',
+      message: error.message || 'Internal server error'
+    };
+    
+    console.error('[GoogleSignIn Error]:', {
+      status,
+      message: error.message,
+      timestamp: new Date().toISOString()
     });
   }
-
-  context.response.status = 200;
-  context.response.cookies.set('token', await middleWares.createToken(user), { httpOnly: true });
-  context.response.body = 'LoginSuccess';
 };
 */
 
@@ -150,7 +246,10 @@ export const loginUserController = async (context) => {
 
   context.response.status = 200;
   context.cookies.set('token', await middleWares.createToken({email:user.email,userName:user.username,password:user.password,userId:user.userid}), { httpOnly: true });
-  context.response.body = 'LoginSuccess';
+  context.response.body = {
+    message: 'LoginSuccess',
+    userId: user.userid
+  };
 };
 
 //logout 
@@ -253,15 +352,16 @@ export const updateUserController = async (context) => {
   const rawBody = await fetchRequest.text();
   if (!rawBody) { throw new Error('Empty request body'); }
   const requestBody = JSON.parse(rawBody);
-  const { userId, newUserData } = requestBody;
+  const {  newUserData } = requestBody;
 
-  if (!userId || !newUserData) {
-    const err = new Error('ValidationError: No UserId or New Data Provided');
+  if ( !newUserData) {
+    const err = new Error('ValidationError: No  New Data Provided');
     err.status = 400;
     throw err;
   }
 
   try {
+    const {userId} = context.state.roleData;
     // Check if user exists
     const userExists = await getUserById(userId);
     if (!userExists) {
@@ -300,12 +400,9 @@ export const updateUserController = async (context) => {
 };
 
 export const deleteUserController = async (context) => {
-  const fetchRequest = context.request.source;
-  const rawBody = await fetchRequest.text();
-  if (!rawBody) { throw new Error('Empty request body'); }
-  const requestBody = JSON.parse(rawBody);
-    const { userId } = requestBody;
+  
   try {
+    const {userId} = context.state.roleData;
     if (!userId) {
       const err = new Error('ValidationError: UserId Required');
       err.status = 400;
@@ -335,7 +432,7 @@ export const deleteUserController = async (context) => {
 
 export const getUserData = async (context) => {
   try{
-  const userId = context.params.userId;
+    const {userId} = context.state.roleData;
   if (!userId) {
     const err = new Error('ValidationError: UserId Required');
     err.status = 400;
@@ -369,6 +466,531 @@ export const getAllUserController = async (context) => {
     throw err;
   }
 };
+//new controllers // File Controllers
+export const createFileController = async (context) => {
+  const fetchRequest = context.request.source;
+  const rawBody = await fetchRequest.text();
+  if (!rawBody) {
+    throw new Error('Empty request body');
+  }
+  const requestBody = JSON.parse(rawBody);
+  const { fileData } = requestBody;
+
+  if (!fileData) {
+    const err = new Error('ValidationError: No File Data Provided');
+    err.status = 400;
+    throw err;
+  }
+
+  try {
+    const { userId } = context.state.roleData;
+    
+    // Check if user exists and get user data
+    const user = await getUserById(userId);
+    if (!user) {
+      const err = new Error('UserNotFound');
+      err.status = 404;
+      throw err;
+    }
+
+    fileData.userId = userId;
+    const createdFile = await createFile(fileData);
+    
+    context.response.status = 201;
+    context.response.body = {
+      message: "file created",
+      file: {
+        ...createdFile,
+        user: {
+          userName: user.username,
+          email: user.email,
+          referenceLocation: user.referencelocation
+        }
+      }
+    };
+  } catch (err) {
+    console.error('Error in createFileController:', err);
+    err.status = err.status || 500;
+    throw err;
+  }
+};
+
+//get allfiles 
+export const getAllFilesController = async (context) => {
+  try {
+    // Optionally, check for admin privileges or specific roles
+    const Admin = await getUserById(context.state.roleData.userId);
+    if (!(Admin.username === Deno.env.get('ADMIN'))) {
+      const err = new Error('UnauthorizedAccess: Admin privileges required');
+      err.status = 403;
+      throw err;
+    }
+
+    const files = await getAllFiles();
+
+    // Option to include user information with each file
+    const filesWithUserInfo = await Promise.all(
+      files.map(async (file) => {
+        const user = await getUserById(file.userid);
+        return {
+          ...file,
+          userName: user ? user.username : 'Unknown User'
+        };
+      })
+    );
+
+    context.response.status = 200;
+    context.response.body = filesWithUserInfo;
+  } catch (err) {
+    console.error('Error in getAllFilesController:', err);
+    err.status = err.status || 500;
+    throw err;
+  }
+};
+//get based on fileid 
+export const getFileController = async (context) => {
+  try {
+    const { fileId } = context.params;
+    const { userId } = context.state.roleData;
+
+    if (!fileId) {
+      const err = new Error('ValidationError: FileId Required');
+      err.status = 400;
+      throw err;
+    }
+
+    const file = await getFileById(fileId);
+    if (!file) {
+      const err = new Error('FileNotFound');
+      err.status = 404;
+      throw err;
+    }
+
+    // Ensure user owns the file
+    if (file.userid !== userId) {
+      const err = new Error('UnauthorizedAccess');
+      err.status = 403;
+      throw err;
+    }
+
+    // Get user information
+    const user = await getUserById(userId);
+    const responseData = {
+      ...file,
+      user: user ? {
+        userName: user.username,
+        email: user.email,
+        referenceLocation: user.referencelocation
+      } : null
+    };
+
+    context.response.status = 200;
+    context.response.body = responseData;
+  } catch (err) {
+    console.error('Error in getFileController:', err);
+    err.status = err.status || 500;
+    throw err;
+  }
+};
+
+export const getFileByUuidController = async (context) => {
+  try {
+    const { fileuuid } = context.params;
+    const { userId } = context.state.roleData;
+
+    if (!fileuuid) {
+      const err = new Error('ValidationError: FileUUID Required');
+      err.status = 400;
+      throw err;
+    }
+
+    const file = await getFileByUuid(fileuuid);
+    if (!file) {
+      const err = new Error('FileNotFound');
+      err.status = 404;
+      throw err;
+    }
+
+    // Ensure user owns the file
+    if (file.userid !== userId) {
+      const err = new Error('UnauthorizedAccess');
+      err.status = 403;
+      throw err;
+    }
+
+    // Get user information
+    const user = await getUserById(userId);
+    const responseData = {
+      ...file,
+      user: user ? {
+        userName: user.username,
+        email: user.email,
+        referenceLocation: user.referencelocation
+      } : null
+    };
+
+    context.response.status = 200;
+    context.response.body = responseData;
+  } catch (err) {
+    console.error('Error in getFileByUuidController:', err);
+    err.status = err.status || 500;
+    throw err;
+  }
+};
+
+export const getUserFilesController = async (context) => {
+  try {
+    const { userId } = context.state.roleData;
+
+    const files = await getFilesByUserId(userId);
+    
+    // Get user information once since all files belong to same user
+    const user = await getUserById(userId);
+    const userInfo = user ? {
+      userName: user.username,
+      email: user.email,
+      referenceLocation: user.referencelocation
+    } : null;
+
+    // Add user information to each file
+    const filesWithUser = files.map(file => ({
+      ...file,
+      user: userInfo
+    }));
+
+    context.response.status = 200;
+    context.response.body = filesWithUser;
+  } catch (err) {
+    console.error('Error in getUserFilesController:', err);
+    err.status = err.status || 500;
+    throw err;
+  }
+};
+
+export const updateFileController = async (context) => {
+  const fetchRequest = context.request.source;
+  const rawBody = await fetchRequest.text();
+  if (!rawBody) {
+    throw new Error('Empty request body');
+  }
+  const requestBody = JSON.parse(rawBody);
+  const { fileData } = requestBody;
+
+  if (!fileData) {
+    const err = new Error('ValidationError: No File Data Provided');
+    err.status = 400;
+    throw err;
+  }
+
+  try {
+    const { fileId } = context.params;
+    const { userId } = context.state.roleData;
+
+    // Check if file exists
+    const existingFile = await getFileById(fileId);
+    if (!existingFile) {
+      const err = new Error('FileNotFound');
+      err.status = 404;
+      throw err;
+    }
+
+    // Ensure user owns the file
+    if (existingFile.userid !== userId) {
+      const err = new Error('UnauthorizedAccess');
+      err.status = 403;
+      throw err;
+    }
+
+    const updated = await updateFile(fileId, fileData);
+    
+    // Get user information
+    const user = await getUserById(userId);
+    const responseData = {
+      ...updated,
+      user: user ? {
+        userName: user.username,
+        email: user.email,
+        referenceLocation: user.referencelocation
+      } : null
+    };
+
+    context.response.status = 200;
+    context.response.body = responseData;
+  } catch (err) {
+    console.error('Error in updateFileController:', err);
+    err.status = err.status || 500;
+    throw err;
+  }
+};
+
+export const deleteFileController = async (context) => {
+  try {
+    const { fileId } = context.params;
+    const { userId } = context.state.roleData;
+
+    // Check if file exists
+    const file = await getFileById(fileId);
+    if (!file) {
+      const err = new Error('FileNotFound');
+      err.status = 404;
+      throw err;
+    }
+
+    // Ensure user owns the file
+    if (file.userid !== userId) {
+      const err = new Error('UnauthorizedAccess');
+      err.status = 403;
+      throw err;
+    }
+
+    await deleteFile(fileId);
+    context.response.status = 200;
+    context.response.body = { message: 'FileDeleted' };
+  } catch (err) {
+    console.error('Error in deleteFileController:', err);
+    err.status = err.status || 500;
+    throw err;
+  }
+};
+
+// Symptom Controllers
+export const createSymptomController = async (context) => {
+  const fetchRequest = context.request.source;
+  const rawBody = await fetchRequest.text();
+  if (!rawBody) {
+    throw new Error('Empty request body');
+  }
+  const requestBody = JSON.parse(rawBody);
+  const { symptomData } = requestBody;
+
+  if (!symptomData) {
+    const err = new Error('ValidationError: No Symptom Data Provided');
+    err.status = 400;
+    throw err;
+  }
+
+  try {
+    const { userId } = context.state.roleData;
+    
+    // Check if user exists and get user data
+    const user = await getUserById(userId);
+    if (!user) {
+      const err = new Error('UserNotFound');
+      err.status = 404;
+      throw err;
+    }
+
+    symptomData.userId = userId;
+    const createdSymptom = await createSymptom(symptomData);
+    
+    // Include user information in response
+    const responseData = {
+      ...createdSymptom,
+      user: {
+        userName: user.username,
+        email: user.email,
+        referenceLocation: user.referencelocation
+      }
+    };
+
+    context.response.status = 201;
+    context.response.body = responseData;
+  } catch (err) {
+    console.error('Error in createSymptomController:', err);
+    err.status = err.status || 500;
+    throw err;
+  }
+};
+
+export const getSymptomController = async (context) => {
+  try {
+    const { symptomId } = context.params;
+    const { userId } = context.state.roleData;
+
+    if (!symptomId) {
+      const err = new Error('ValidationError: SymptomId Required');
+      err.status = 400;
+      throw err;
+    }
+
+    const symptom = await getSymptomById(symptomId);
+    if (!symptom) {
+      const err = new Error('SymptomNotFound');
+      err.status = 404;
+      throw err;
+    }
+
+    // Ensure user owns the symptom record
+    if (symptom.userid !== userId) {
+      const err = new Error('UnauthorizedAccess');
+      err.status = 403;
+      throw err;
+    }
+
+    // Get user information
+    const user = await getUserById(symptom.userid);
+    const responseData = {
+      ...symptom,
+      user: user ? {
+        userName: user.username,
+        email: user.email,
+        referenceLocation: user.referencelocation
+      } : null
+    };
+
+    context.response.status = 200;
+    context.response.body = responseData;
+  } catch (err) {
+    console.error('Error in getSymptomController:', err);
+    err.status = err.status || 500;
+    throw err;
+  }
+};
+
+export const getUserSymptomsController = async (context) => {
+  try {
+    const { userId } = context.state.roleData;
+
+    const symptoms = await getSymptomsByUserId(userId);
+    
+    // Get user information once since all symptoms belong to same user
+    const user = await getUserById(userId);
+    const userInfo = user ? {
+      userName: user.username,
+      email: user.email,
+      referenceLocation: user.referencelocation
+    } : null;
+
+    // Add user information to each symptom
+    const symptomsWithUser = symptoms.map(symptom => ({
+      ...symptom,
+      user: userInfo
+    }));
+
+    context.response.status = 200;
+    context.response.body = symptomsWithUser;
+  } catch (err) {
+    console.error('Error in getUserSymptomsController:', err);
+    err.status = err.status || 500;
+    throw err;
+  }
+};
+
+export const updateSymptomController = async (context) => {
+  const fetchRequest = context.request.source;
+  const rawBody = await fetchRequest.text();
+  if (!rawBody) {
+    throw new Error('Empty request body');
+  }
+  const requestBody = JSON.parse(rawBody);
+  const { symptomData } = requestBody;
+
+  if (!symptomData) {
+    const err = new Error('ValidationError: No Symptom Data Provided');
+    err.status = 400;
+    throw err;
+  }
+
+  try {
+    const { symptomId } = context.params;
+    const { userId } = context.state.roleData;
+
+    // Check if symptom exists
+    const existingSymptom = await getSymptomById(symptomId);
+    if (!existingSymptom) {
+      const err = new Error('SymptomNotFound');
+      err.status = 404;
+      throw err;
+    }
+
+    // Ensure user owns the symptom record
+    if (existingSymptom.userid !== userId) {
+      const err = new Error('UnauthorizedAccess');
+      err.status = 403;
+      throw err;
+    }
+
+    const updated = await updateSymptom(symptomId, symptomData);
+    
+    // Get user information
+    const user = await getUserById(userId);
+    const responseData = {
+      ...updated,
+      user: user ? {
+        userName: user.username,
+        email: user.email,
+        referenceLocation: user.referencelocation
+      } : null
+    };
+
+    context.response.status = 200;
+    context.response.body = responseData;
+  } catch (err) {
+    console.error('Error in updateSymptomController:', err);
+    err.status = err.status || 500;
+    throw err;
+  }
+};
+export const deleteSymptomController = async (context) => {
+  try {
+    const { symptomId } = context.params;
+    const { userId } = context.state.roleData;
+
+    // Check if symptom exists
+    const symptom = await getSymptomById(symptomId);
+    if (!symptom) {
+      const err = new Error('SymptomNotFound');
+      err.status = 404;
+      throw err;
+    }
+
+    // Ensure user owns the symptom record
+    if (symptom.userid !== userId) {
+      const err = new Error('UnauthorizedAccess');
+      err.status = 403;
+      throw err;
+    }
+
+    await deleteSymptom(symptomId);
+    context.response.status = 200;
+    context.response.body = { message: 'SymptomDeleted' };
+  } catch (err) {
+    console.error('Error in deleteSymptomController:', err);
+    err.status = err.status || 500;
+    throw err;
+  }
+};
+export const getAllSymptomsController = async (context) => {
+  try {
+    const Admin = await getUserById(context.state.roleData.userId);
+    // You might want to check if the user has admin privileges
+    if (!(Admin.username===Deno.env.get('ADMIN'))) {
+      const err = new Error('UnauthorizedAccess: Admin privileges required');
+      err.status = 403;
+      throw err;
+    }
+
+    const symptoms = await getAllSymptoms();
+    
+    // Option to include user information with each symptom
+    const symptomsWithUserInfo = await Promise.all(
+      symptoms.map(async (symptom) => {
+        const user = await getUserById(symptom.userid);
+        return {
+          ...symptom,
+          userName: user ? user.username : 'Unknown User'
+        };
+      })
+    );
+
+    context.response.status = 200;
+    context.response.body = symptomsWithUserInfo;
+  } catch (err) {
+    console.error('Error in getAllSymptomsController:', err);
+    err.status = err.status || 500;
+    throw err;
+  }
+};
 
           export default{
             forgotPasswordController,
@@ -381,5 +1003,18 @@ export const getAllUserController = async (context) => {
             updateUserController,
             deleteUserController,
             getAllUserController,
-            getUserData
+            getUserData,
+            createFileController,
+            deleteFileController,
+            updateFileController,
+            getFileController,
+            getFileByUuidController,
+            getUserFilesController,
+            createSymptomController,
+            deleteSymptomController,
+            updateSymptomController,
+            getSymptomController,
+            getUserSymptomsController,
+            getAllSymptomsController,
+            getAllFilesController
           }

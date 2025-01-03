@@ -22,7 +22,7 @@ CREATE TABLE files (
     createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     expirationTime INTEGER NOT NULL,
     url VARCHAR(255) NOT NULL,
-    fileuuid UUID DEFAULT uuid_generate_v4(),
+    fileuuid UUID,
     updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
